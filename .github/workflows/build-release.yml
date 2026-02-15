@@ -1,0 +1,170 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka
+          pip install -r requirements.txt
+          
+      - name: Build with Nuitka (Windows)
+        run: |
+          python -m nuitka --standalone --onefile --plugin-enable=anti-bloat --include-package=fastapi --include-package=uvicorn --include-package=pydantic --include-package=aiohttp --include-package=aiofiles --include-package=httpx --include-package=websockets --include-package=PIL --include-package=requests --include-package=python_multipart --windows-disable-console --output-dir=dist --output-filename=qwen-server.exe --assume-yes-for-downloads qwen_server.py
+            
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-server-windows
+          path: dist/qwen-server.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka
+          pip install -r requirements.txt
+          
+      - name: Build with Nuitka (Linux)
+        run: |
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --enable-plugin=anti-bloat \
+            --include-package=fastapi \
+            --include-package=uvicorn \
+            --include-package=pydantic \
+            --include-package=aiohttp \
+            --include-package=aiofiles \
+            --include-package=httpx \
+            --include-package=websockets \
+            --include-package=PIL \
+            --include-package=requests \
+            --include-package=python_multipart \
+            --output-dir=dist \
+            --output-filename=qwen-server-linux \
+            qwen_server.py
+            
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-server-linux
+          path: dist/qwen-server-linux
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka
+          pip install -r requirements.txt
+          
+      - name: Build with Nuitka (macOS)
+        run: |
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --enable-plugin=anti-bloat \
+            --include-package=fastapi \
+            --include-package=uvicorn \
+            --include-package=pydantic \
+            --include-package=aiohttp \
+            --include-package=aiofiles \
+            --include-package=httpx \
+            --include-package=websockets \
+            --include-package=PIL \
+            --include-package=requests \
+            --include-package=python_multipart \
+            --macos-create-app-bundle \
+            --output-dir=dist \
+            --output-filename=qwen-server-macos \
+            qwen_server.py
+            
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-server-macos
+          path: dist/qwen-server-macos
+
+  create-release:
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            artifacts/qwen-server-windows/qwen-server.exe
+            artifacts/qwen-server-linux/qwen-server-linux
+            artifacts/qwen-server-macos/qwen-server-macos
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Qwen API Server Release
+            
+            ### 下载地址
+            - **Windows**: `qwen-server.exe` - 双击运行
+            - **Linux**: `qwen-server-linux` - `./qwen-server-linux`
+            - **macOS**: `qwen-server-macos` - `./qwen-server-macos`
+            
+            ### 使用说明
+            1. 下载对应平台的可执行文件
+            2. 创建 `qwen_accounts.py` 文件配置账号
+            3. 运行程序
+            4. 访问 http://localhost:1325
+            
+            ### 系统要求
+            - Windows 10/11 (64-bit)
+            - Linux (Ubuntu 20.04+, CentOS 8+)
+            - macOS 11+ (Intel/Apple Silicon)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
